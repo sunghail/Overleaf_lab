@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TASK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$TASK_ROOT"
+
+if command -v docker >/dev/null 2>&1; then
+  TASK_DOCKER="$(command -v docker)"
+elif [[ -x /Applications/Docker.app/Contents/Resources/bin/docker ]]; then
+  TASK_DOCKER=/Applications/Docker.app/Contents/Resources/bin/docker
+else
+  echo "Docker is required. Install and start Docker Desktop first." >&2
+  exit 1
+fi
+
+case "${1:-help}" in
+  init)
+    if [[ -f .env ]]; then
+      echo ".env already exists; keeping the current secrets."
+      exit 0
+    fi
+    umask 077
+    {
+      printf 'OVERLEAF_INVITE_TOKEN_SECRET=%s\n' "$(openssl rand -hex 32)"
+      printf 'OVERLEAF_SESSION_SECRET=%s\n' "$(openssl rand -hex 32)"
+    } > .env
+    echo "Created local secrets in .env (excluded from Git)."
+    ;;
+  build|up|rebuild)
+    if [[ ! -f .env ]]; then
+      echo "Run ./bin/lab init first." >&2
+      exit 1
+    fi
+    cp server-ce/.dockerignore .dockerignore
+    printf '\n.env\n.env.*\n.local/\n' >> .dockerignore
+    export OVERLEAF_LAB_REVISION="$(git rev-parse HEAD)"
+    "$TASK_DOCKER" build --platform linux/amd64 \
+      --file server-ce/Dockerfile-base --tag overleaf-lab-base:local .
+    case "$1" in
+      build) "$TASK_DOCKER" compose -f docker-compose.lab.yml build ;;
+      up|rebuild) "$TASK_DOCKER" compose -f docker-compose.lab.yml up -d --build ;;
+    esac
+    ;;
+  stop)
+    "$TASK_DOCKER" compose -f docker-compose.lab.yml stop
+    ;;
+  status)
+    "$TASK_DOCKER" compose -f docker-compose.lab.yml ps
+    ;;
+  logs)
+    "$TASK_DOCKER" compose -f docker-compose.lab.yml logs --tail=100 "${2:-sharelatex}"
+    ;;
+  *)
+    echo "Usage: ./bin/lab {init|build|up|rebuild|stop|status|logs [service]}"
+    ;;
+esac
