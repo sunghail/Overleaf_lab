@@ -1,3 +1,182 @@
+.lab-assembly-panel-host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .lab-assembly-panel {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.lab-assembly-workspace-link {
+  display: block;
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--content-primary);
+}
+
+.lab-assembly-workspace {
+  --file-tree-bg: #fff;
+  --file-tree-item-color: #23342d;
+  --file-tree-item-hover-bg: #edf5f0;
+  --file-tree-item-selected-bg: #e1f0e7;
+  --file-tree-item-selected-color: #164b32;
+
+  min-height: 100vh;
+  padding: 28px clamp(16px, 4vw, 64px) 48px;
+  background: #f4f6f3;
+
+  .lab-workspace-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto 24px;
+  }
+  .lab-workspace-eyebrow {
+    color: #426750;
+    font-size: 13px;
+  }
+  .lab-workspace-header h1 {
+    margin: 8px 0;
+    font-size: 32px;
+    color: #193c2a;
+  }
+  .lab-workspace-header p {
+    margin: 0;
+    color: #617267;
+  }
+  .lab-workspace-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .lab-workspace-notice {
+    max-width: 1400px;
+    margin: 16px auto;
+  }
+  .lab-assembly-panel {
+    height: auto;
+    max-width: 1400px;
+    margin: auto;
+    padding: 0;
+    overflow: visible;
+    background: transparent;
+    font-size: 15px;
+  }
+  .lab-assembly-panel > header {
+    margin-bottom: 16px;
+  }
+  .lab-assembly-panel > .btn {
+    margin-bottom: 20px;
+  }
+  .lab-assembly-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+    grid-template-areas:
+      'outline paper'
+      'outline selection'
+      'outline add'
+      'outline status';
+    grid-template-rows: min-content min-content min-content 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .lab-assembly-outline {
+    grid-area: outline;
+    max-height: calc(100vh - 240px);
+    overflow-y: auto;
+  }
+  .lab-paper-settings {
+    grid-area: paper;
+    margin: 0;
+  }
+  .lab-assembly-selection {
+    grid-area: selection;
+    margin: 0;
+  }
+  .lab-assembly-add {
+    grid-area: add;
+    margin: 0;
+  }
+  .lab-assembly-save-status {
+    grid-area: status;
+  }
+  .lab-assembly-outline,
+  .lab-paper-settings,
+  .lab-assembly-selection,
+  .lab-assembly-add,
+  .lab-template-panel,
+  .lab-workspace-preview {
+    padding: 22px;
+    border: 1px solid #dce5de;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .lab-assembly-module {
+    min-height: 46px;
+    margin: 6px 0;
+    padding: 11px;
+    border: 1px solid #e0e7e1;
+    border-radius: 8px;
+  }
+  .lab-assembly-selection > .btn {
+    display: block;
+    margin: 12px 0;
+  }
+  .lab-assembly-empty-selection {
+    color: #617267;
+  }
+  .lab-workspace-preview {
+    max-width: 1400px;
+    margin: 0 auto 24px;
+  }
+  .lab-workspace-preview header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .lab-workspace-preview h2 {
+    font-size: 20px;
+    margin: 0;
+  }
+  .lab-pdf-page-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .lab-pdf-canvas-wrap {
+    max-height: 65vh;
+    overflow: auto;
+    padding: 16px;
+    background: #e4e9e4;
+  }
+  .lab-pdf-canvas-wrap canvas {
+    display: block;
+    max-width: 100%;
+    margin: auto;
+    background: #fff;
+  }
+  @media (max-width: 850px) {
+    .lab-assembly-layout {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: 'outline' 'paper' 'selection' 'add' 'status';
+      grid-template-rows: auto;
+    }
+    .lab-assembly-outline {
+      max-height: none;
+    }
+  }
+}
+
 .lab-assembly-panel {
   height: 100%;
   overflow-y: auto;

@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react'
 import {
   getJSON,
   postJSON,
-  getUserFacingMessage,
+  getUserFacingMessage
 } from '@/infrastructure/fetch-json'
 export default function LabTemplatePanel({
   projectId,
   waitForSavedContent,
   editable,
+  openInWorkspace = false
 }: {
   projectId: string
   waitForSavedContent: () => Promise<void>
   editable: boolean
+  openInWorkspace?: boolean
 }) {
   const [library, setLibrary] = useState<{
     builtin: { id: string; name: string; description: string }[]
@@ -27,7 +29,7 @@ export default function LabTemplatePanel({
       setLibrary(await getJSON('/lab-templates'))
     } catch (e) {
       setError(
-        getUserFacingMessage(e as Error) || '템플릿을 불러오지 못했습니다.',
+        getUserFacingMessage(e as Error) || '템플릿을 불러오지 못했습니다.'
       )
     }
   }
@@ -40,9 +42,11 @@ export default function LabTemplatePanel({
     try {
       const result = await postJSON<{ projectId: string }>(
         '/lab-templates/create',
-        { body: { templateId, name } },
+        { body: { templateId, name } }
       )
-      window.location.assign(`/project/${result.projectId}`)
+      window.location.assign(
+        `/project/${result.projectId}${openInWorkspace ? '/lab-assembly/workspace' : ''}`
+      )
     } catch (e) {
       setError(getUserFacingMessage(e as Error) || '원고를 만들지 못했습니다.')
       setBusy(false)
@@ -109,14 +113,14 @@ export default function LabTemplatePanel({
           try {
             await waitForSavedContent()
             await postJSON(`/project/${projectId}/lab-assembly/template`, {
-              body: { name: templateName },
+              body: { name: templateName }
             })
             setMessage('개인 템플릿으로 저장했습니다.')
             await reload()
           } catch (e) {
             setError(
               getUserFacingMessage(e as Error) ||
-                '템플릿을 저장하지 못했습니다.',
+                '템플릿을 저장하지 못했습니다.'
             )
           } finally {
             setBusy(false)

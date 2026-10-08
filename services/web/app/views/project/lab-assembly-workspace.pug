@@ -1,0 +1,17 @@
+extends ../layout-base
+
+block entrypointVar
+	- entrypoint = 'pages/lab-assembly-workspace'
+
+block isApplicationPageVar
+	- isApplicationPage = true
+
+block vars
+	- suppressSkipToContent = true
+
+block append meta
+	meta(name='ol-project' data-type='json' content=project)
+	meta(name='ol-hasWriteAccess' data-type='boolean' content=canWrite)
+
+block body
+	main#lab-assembly-workspace-root

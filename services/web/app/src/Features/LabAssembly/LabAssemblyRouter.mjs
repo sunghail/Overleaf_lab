@@ -13,6 +13,9 @@ import {
 } from './LabTemplateManager.mjs'
 import DocumentConversionManager from '../Uploads/DocumentConversionManager.mjs'
 import { pipeline } from 'node:stream/promises'
+import ProjectGetter from '../Project/ProjectGetter.mjs'
+import AuthorizationManager from '../Authorization/AuthorizationManager.mjs'
+import TokenAccessHandler from '../TokenAccess/TokenAccessHandler.mjs'
 
 const id = z.string().uuid()
 const title = z.string().trim().min(1).max(200)
@@ -95,6 +98,35 @@ function handle(action) {
 export default {
   apply(webRouter) {
     const route = '/project/:Project_id/lab-assembly'
+    webRouter.get(
+      `${route}/workspace`,
+      AuthenticationController.requireLogin(),
+      AuthorizationMiddleware.ensureUserCanReadProject,
+      expressify(async (req, res) => {
+        const input = parseReq(req, z.object({ params }))
+        const projectId = input.params.Project_id
+        const project = await ProjectGetter.promises.getProject(projectId, {
+          name: 1,
+          compiler: 1,
+        })
+        if (!project) return res.status(404).send('프로젝트를 찾을 수 없습니다.')
+        const canWrite =
+          await AuthorizationManager.promises.canUserWriteProjectContent(
+            SessionManager.getLoggedInUserId(req.session),
+            projectId,
+            TokenAccessHandler.getRequestToken(req, projectId),
+          )
+        res.render('project/lab-assembly-workspace', {
+          title: '논문 조립',
+          project: {
+            _id: projectId,
+            name: project.name,
+            compiler: project.compiler,
+          },
+          canWrite,
+        })
+      }),
+    )
     webRouter.get(
       route,
       AuthorizationMiddleware.ensureUserCanReadProject,
