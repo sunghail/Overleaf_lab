@@ -34,6 +34,7 @@ import importOverleafModules from '../../../../../macros/import-overleaf-module.
 import { shouldIncludeElement } from '@/features/ide-react/util/rail-utils'
 import { useEditorContext } from '@/shared/context/editor-context'
 import useEventListener from '@/shared/hooks/use-event-listener'
+import LabAssemblyPanel from '@/features/lab-assembly/lab-assembly-panel'
 
 const moduleRailEntries = (
   importOverleafModules('railEntries') as {
@@ -106,6 +107,13 @@ export const RailLayout = () => {
         // NOTE: We always need to mount the file tree on first load
         // since it is responsible for opening the initial document.
         mountOnFirstLoad: true,
+      },
+      {
+        key: 'lab-assembly',
+        icon: 'call_split',
+        title: '논문 조립',
+        component: <LabAssemblyPanel />,
+        hide: isOverleaf,
       },
       {
         key: 'full-project-search',

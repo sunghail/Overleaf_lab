@@ -6,6 +6,7 @@ import ProjectApiController from './Features/Project/ProjectApiController.mjs'
 import ProjectListController from './Features/Project/ProjectListController.mjs'
 import SpellingController from './Features/Spelling/SpellingController.mjs'
 import EditorRouter from './Features/Editor/EditorRouter.mjs'
+import LabAssemblyRouter from './Features/LabAssembly/LabAssemblyRouter.mjs'
 import Settings from '@overleaf/settings'
 import TpdsController from './Features/ThirdPartyDataStore/TpdsController.mjs'
 import SubscriptionRouter from './Features/Subscription/SubscriptionRouter.mjs'
@@ -304,6 +305,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   }
 
   EditorRouter.apply(webRouter, privateApiRouter)
+  LabAssemblyRouter.apply(webRouter)
   CollaboratorsRouter.apply(webRouter, privateApiRouter)
   SubscriptionRouter.apply(webRouter, privateApiRouter, publicApiRouter)
   UploadsRouter.apply(webRouter, privateApiRouter)

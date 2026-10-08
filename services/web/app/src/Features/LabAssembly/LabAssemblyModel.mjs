@@ -1,0 +1,237 @@
+import { randomUUID } from 'node:crypto'
+
+export const MANIFEST_NAME = 'lab-assembly.json'
+export const MAIN_NAME = 'lab-assembled.tex'
+const ID_PATTERN = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
+const KINDS = ['section', 'abstract', 'highlights']
+const SECTION_COMMANDS = ['section', 'subsection', 'subsubsection']
+
+export class AssemblyError extends Error {
+  constructor(message, status = 400) {
+    super(message)
+    this.status = status
+  }
+}
+
+function check(condition, message) {
+  if (!condition) throw new AssemblyError(message)
+}
+
+function validTitle(title) {
+  check(
+    typeof title === 'string' && title.trim().length > 0 && title.length <= 200,
+    '제목을 1–200자로 입력해 주세요.',
+  )
+}
+
+export function moduleFilename(id) {
+  check(
+    typeof id === 'string' && ID_PATTERN.test(id),
+    '모듈 식별자가 올바르지 않습니다.',
+  )
+  return `lab-module-${id}.tex`
+}
+
+export function validateManifest(manifest) {
+  check(
+    manifest?.format === 'overleaf-lab-assembly' &&
+      manifest.schemaVersion === 1,
+    '지원하지 않는 조립 설정입니다.',
+  )
+  check(
+    Number.isSafeInteger(manifest.version) && manifest.version >= 1,
+    '조립 설정의 버전이 올바르지 않습니다.',
+  )
+  validTitle(manifest.title)
+  check(
+    Array.isArray(manifest.modules) && manifest.modules.length <= 100,
+    '모듈은 최대 100개까지 구성할 수 있습니다.',
+  )
+  const nodes = new Map()
+  for (const module of manifest.modules) {
+    check(
+      module && typeof module.id === 'string' && ID_PATTERN.test(module.id),
+      '모듈 식별자가 올바르지 않습니다.',
+    )
+    check(!nodes.has(module.id), '모듈 식별자가 중복되었습니다.')
+    validTitle(module.title)
+    check(KINDS.includes(module.kind), '모듈 종류가 올바르지 않습니다.')
+    check(typeof module.hidden === 'boolean', '숨김 설정이 올바르지 않습니다.')
+    check(
+      module.parentId === null ||
+        (typeof module.parentId === 'string' &&
+          ID_PATTERN.test(module.parentId)),
+      '상위 모듈을 확인해 주세요.',
+    )
+    check(
+      module.parentId === null || module.kind === 'section',
+      '초록과 Highlights는 논문 최상위에 배치해 주세요.',
+    )
+    nodes.set(module.id, module)
+  }
+  for (const module of manifest.modules) {
+    const seen = new Set([module.id])
+    let parentId = module.parentId
+    let depth = 1
+    while (parentId !== null) {
+      check(nodes.has(parentId), '상위 모듈이 존재하지 않습니다.')
+      check(!seen.has(parentId), '자신의 하위 모듈 안으로 이동할 수 없습니다.')
+      seen.add(parentId)
+      parentId = nodes.get(parentId).parentId
+      depth += 1
+    }
+    check(depth <= 3, '첫 버전은 3단계 제목 구조까지 지원합니다.')
+  }
+  return manifest
+}
+
+export function createManifest(title) {
+  const modules = []
+  function add(name, kind = 'section', parentId = null) {
+    const id = randomUUID()
+    modules.push({ id, title: name, kind, parentId, hidden: false })
+    return id
+  }
+  add('Abstract', 'abstract')
+  add('Introduction')
+  const methods = add('Methods')
+  add('Data collection', 'section', methods)
+  add('Model training', 'section', methods)
+  add('Results')
+  add('Conclusion')
+  return validateManifest({
+    format: 'overleaf-lab-assembly',
+    schemaVersion: 1,
+    version: 1,
+    title,
+    modules,
+  })
+}
+
+export function applyOperation(manifest, version, operation) {
+  validateManifest(manifest)
+  if (version !== manifest.version) {
+    throw new AssemblyError(
+      '다른 화면에서 구성이 변경되었습니다. 새로고침 후 다시 시도해 주세요.',
+      409,
+    )
+  }
+  const next = structuredClone(manifest)
+  const module = next.modules.find(item => item.id === operation.id)
+  if (operation.type !== 'add') check(module, '모듈을 찾을 수 없습니다.')
+
+  switch (operation.type) {
+    case 'add':
+      next.modules.push({
+        id: randomUUID(),
+        title: operation.title,
+        kind: operation.kind,
+        parentId: operation.parentId,
+        hidden: false,
+      })
+      break
+    case 'rename':
+      module.title = operation.title
+      break
+    case 'visibility':
+      module.hidden = operation.hidden
+      break
+    case 'move': {
+      check(operation.beforeId !== module.id, '같은 위치로 이동할 수 없습니다.')
+      module.parentId = operation.parentId
+      const rest = next.modules.filter(item => item.id !== module.id)
+      const before = operation.beforeId
+        ? rest.find(item => item.id === operation.beforeId)
+        : null
+      check(
+        !operation.beforeId || (before && before.parentId === module.parentId),
+        '이동할 위치의 상위 모듈을 확인해 주세요.',
+      )
+      rest.splice(before ? rest.indexOf(before) : rest.length, 0, module)
+      next.modules = rest
+      break
+    }
+    default:
+      throw new AssemblyError('지원하지 않는 조립 작업입니다.')
+  }
+  next.version += 1
+  return validateManifest(next)
+}
+
+export function escapeLatex(text) {
+  const escaped = {
+    '\\': '\\textbackslash{}',
+    '{': '\\{',
+    '}': '\\}',
+    '%': '\\%',
+    '&': '\\&',
+    '#': '\\#',
+    $: '\\$',
+    _: '\\_',
+    '^': '\\textasciicircum{}',
+    '~': '\\textasciitilde{}',
+  }
+  return text
+    .replace(/[\\{}%&#$_^~]/g, char => escaped[char])
+    .replace(/[\r\n]/g, ' ')
+}
+
+export function renderManifest(manifest) {
+  validateManifest(manifest)
+  const lines = [
+    '% Generated by the lab assembly editor. Edit content in the module files.',
+    '\\documentclass{article}',
+    '\\usepackage{graphicx}',
+    '\\usepackage{amsmath}',
+    `\\title{${escapeLatex(manifest.title)}}`,
+    '\\author{}',
+    '\\date{}',
+    '\\begin{document}',
+    '\\maketitle',
+  ]
+  const children = parentId =>
+    manifest.modules.filter(item => item.parentId === parentId && !item.hidden)
+  const content = module => {
+    lines.push(`\\input{${moduleFilename(module.id)}}`, '\\par')
+  }
+  const visit = (module, depth, mode) => {
+    if (mode === 'abstract') {
+      lines.push(`\\noindent\\textbf{${escapeLatex(module.title)}}\\par`)
+    } else if (mode === 'highlights') {
+      lines.push('\\item')
+    } else {
+      lines.push(
+        `\\${SECTION_COMMANDS[depth - 1]}{${escapeLatex(module.title)}}`,
+        `\\label{lab:${module.id}}`,
+      )
+    }
+    content(module)
+    const descendants = children(module.id)
+    if (mode === 'highlights' && descendants.length)
+      lines.push('\\begin{itemize}')
+    for (const child of descendants) visit(child, depth + 1, mode)
+    if (mode === 'highlights' && descendants.length)
+      lines.push('\\end{itemize}')
+  }
+  for (const module of children(null)) {
+    if (module.kind === 'abstract') {
+      lines.push('\\begin{abstract}')
+      content(module)
+      for (const child of children(module.id)) visit(child, 2, 'abstract')
+      lines.push('\\end{abstract}')
+    } else if (module.kind === 'highlights') {
+      lines.push(`\\section*{${escapeLatex(module.title)}}`)
+      content(module)
+      const items = children(module.id)
+      if (items.length) {
+        lines.push('\\begin{itemize}')
+        for (const child of items) visit(child, 2, 'highlights')
+        lines.push('\\end{itemize}')
+      }
+    } else {
+      visit(module, 1, 'section')
+    }
+  }
+  lines.push('\\end{document}', '')
+  return lines.join('\n')
+}
