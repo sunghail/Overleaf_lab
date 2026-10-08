@@ -28,8 +28,11 @@ RUN --mount=type=cache,target=/root/.cache \
     --mount=type=tmpfs,target=/tmp node genScript install | bash
 
 # Word export and Word-style manuscript rendering for the lab.
-RUN apt-get update && apt-get install -y --no-install-recommends pandoc python3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends pandoc python3 fontconfig && rm -rf /var/lib/apt/lists/*
 RUN tlmgr install fontspec unicode-math setspace titlesec lineno natbib tools booktabs multirow caption tex-gyre tex-gyre-math
+RUN LAB_TEX_FONT_DIR="$(dirname "$(dirname "$(kpsewhich texgyretermes-math.otf)")")" \
+    && printf '<fontconfig><dir>%s</dir></fontconfig>\n' "$LAB_TEX_FONT_DIR" > /etc/fonts/conf.d/09-overleaf-lab-texfonts.conf \
+    && fc-cache -f "$LAB_TEX_FONT_DIR"
 
 # Add the actual source files
 # ---------------------------

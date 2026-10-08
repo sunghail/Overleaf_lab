@@ -55,7 +55,9 @@ Docker Desktop을 실행한 뒤 저장소 루트에서 실행합니다.
 
 ## Cleaner Production 원고와 Word 출력
 
-이미지 빌드가 Pandoc·Python과 원고·표 출력에 필요한 TeX 패키지를 설치합니다.
+이미지 빌드가 Pandoc·Python·Fontconfig와 원고·표 출력에 필요한 TeX 패키지를 설치합니다.
+TeX Live의 OTF 글꼴 경로를 등록하고 캐시를 만들어 수식용 TeX Gyre Termes Math도
+서버 재시작 후 찾을 수 있도록 구성합니다.
 Word 변환은 로컬 구성의 `ENABLE_PANDOC_CONVERSIONS`로 활성화합니다.
 기능을 추가한 뒤에는 위의 `./bin/lab rebuild`로 실행 이미지를 갱신합니다.
 
