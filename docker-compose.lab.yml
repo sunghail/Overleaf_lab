@@ -21,6 +21,7 @@ services:
       - "127.0.0.1:8080:80"
     volumes:
       - overleaf-data:/var/lib/overleaf
+      - ./.local/fonts:/usr/local/share/fonts/lab:ro
     environment:
       OVERLEAF_APP_NAME: Overleaf Community Edition
       OVERLEAF_SITE_URL: http://localhost:8080
@@ -31,7 +32,7 @@ services:
       OVERLEAF_SESSION_SECRET: ${OVERLEAF_SESSION_SECRET:?Run ./bin/lab init first}
       EMAIL_CONFIRMATION_DISABLED: "true"
       ENABLED_LINKED_FILE_TYPES: "project_file,project_output_file"
-      ENABLE_CONVERSIONS: "true"
+      ENABLE_PANDOC_CONVERSIONS: "true"
       SANDBOXED_COMPILES: "false"
       DOCKER_RUNNER: "false"
     healthcheck:

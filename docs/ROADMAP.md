@@ -27,3 +27,6 @@
 현재 작업 상태와 검증은 [1단계 기록](tasks/module-assembly/README.md)을 참고한다.
 첫 버전의 조작 방법은 [논문 조립 사용법](MODULE_ASSEMBLY.md)에 있다.
 저널 규칙의 근거는 [가이드 조사 기록](tasks/journal-guides/README.md)에 있다.
+사용자 요청으로 먼저 연결한 Word 기준 Cleaner Production 01, 개인 템플릿 재사용과
+표 편집은 [템플릿 작업 기록](tasks/cleaner-template/README.md)에 있다.
+이는 2·4·6단계의 일부이며 공식 저널 클래스 전환·그림 편집·전체 제출 검증은 포함하지 않는다.

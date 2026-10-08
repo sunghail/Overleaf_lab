@@ -105,3 +105,80 @@
     margin-top: var(--spacing-03);
   }
 }
+
+.lab-assembly-panel {
+  textarea {
+    width: 100%;
+    min-height: 70px;
+    color: inherit;
+    background: var(--file-tree-bg);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-base);
+    padding: 6px;
+  }
+  .lab-template-card {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-primary);
+  }
+  .lab-template-card > button {
+    display: block;
+    margin-top: 8px;
+  }
+  .lab-paper-settings {
+    margin-top: 12px;
+  }
+  .lab-paper-settings summary {
+    cursor: pointer;
+  }
+}
+.lab-table-dialog.modal-dialog {
+  width: calc(100% - 40px);
+  max-width: 1140px;
+
+  .lab-table-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin: 12px 0;
+  }
+  .lab-table-controls input[type='number'] {
+    width: 65px;
+  }
+  .lab-table-grid-wrap {
+    overflow: auto;
+  }
+  .lab-table-grid {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .lab-table-grid th,
+  .lab-table-grid td {
+    border: 1px solid var(--border-primary);
+    padding: 6px;
+    min-width: 100px;
+  }
+  .lab-table-grid th {
+    font-weight: normal;
+    background: var(--bg-secondary);
+  }
+  .lab-table-grid label {
+    display: block;
+  }
+  .lab-table-grid input,
+  .lab-table-grid select {
+    width: 100%;
+    min-width: 80px;
+  }
+  .lab-table-grid td input {
+    border: 0;
+    background: transparent;
+  }
+  .lab-table-grid .header-cell {
+    border-bottom: 2px solid var(--border-primary);
+  }
+  .lab-table-grid .selected-cell {
+    outline: 2px solid var(--green-40);
+    outline-offset: -2px;
+  }
+}

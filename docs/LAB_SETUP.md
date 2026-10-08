@@ -52,3 +52,17 @@ Docker Desktop을 실행한 뒤 저장소 루트에서 실행합니다.
 연구실 서버 배포와 백업·메일·HTTPS 구성은 이후 작업입니다.
 
 현재 검증 상태는 [기본 환경 작업 기록](tasks/baseline/README.md)을 참고합니다.
+
+## Cleaner Production 원고와 Word 출력
+
+이미지 빌드가 Pandoc·Python과 원고·표 출력에 필요한 TeX 패키지를 설치합니다.
+Word 변환은 로컬 구성의 `ENABLE_PANDOC_CONVERSIONS`로 활성화합니다.
+기능을 추가한 뒤에는 위의 `./bin/lab rebuild`로 실행 이미지를 갱신합니다.
+
+PDF에 Word와 같은 글꼴을 쓰려면 사용 가능한 Times New Roman 글꼴 파일을
+`.local/fonts/`에 둡니다. 현재 프로필은 `Times New Roman.ttf`,
+`Times New Roman Bold.ttf`, `Times New Roman Italic.ttf`,
+`Times New Roman Bold Italic.ttf`를 읽습니다. 글꼴이 없으면 TeX Gyre Termes를 사용합니다.
+글꼴과 개인 Word 원본은 Git에 포함하지 않습니다.
+
+사용법은 [Cleaner Production 01](CLEANER_TEMPLATE.md)에 있습니다.

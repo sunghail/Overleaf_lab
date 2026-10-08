@@ -27,6 +27,10 @@ RUN --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/usr/local/share/.cache/yarn,id=server-ce-yarn-fallback-cache \
     --mount=type=tmpfs,target=/tmp node genScript install | bash
 
+# Word export and Word-style manuscript rendering for the lab.
+RUN apt-get update && apt-get install -y --no-install-recommends pandoc python3 && rm -rf /var/lib/apt/lists/*
+RUN tlmgr install fontspec unicode-math setspace titlesec lineno natbib tools booktabs multirow caption tex-gyre tex-gyre-math
+
 # Add the actual source files
 # ---------------------------
 COPY --parents libraries/ services/ tools/migrations/ /overleaf/
@@ -103,6 +107,7 @@ COPY server-ce/config/latexmkrc /usr/local/share/latexmk/LatexMk
 # -------------------------------------------------
 ENV SITE_MAINTENANCE_FILE="/etc/overleaf/site_status"
 RUN touch $SITE_MAINTENANCE_FILE
+
 
 # Set Environment Variables
 # --------------------------------

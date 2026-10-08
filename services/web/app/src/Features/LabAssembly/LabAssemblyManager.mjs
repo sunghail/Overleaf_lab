@@ -3,6 +3,15 @@ import EditorController from '../Editor/EditorController.mjs'
 import DocumentUpdaterHandler from '../DocumentUpdater/DocumentUpdaterHandler.mjs'
 import LockManager from '../../infrastructure/LockManager.mjs'
 import EditorRealTimeController from '../Editor/EditorRealTimeController.mjs'
+import { fileURLToPath } from 'node:url'
+import {
+  CLEANER_PROFILE,
+  REFERENCE_DOCX,
+  createCleanerManifest,
+  initialCleanerBody,
+} from './LabCleanerTemplate.mjs'
+import { renderTable } from './LabTableModel.mjs'
+import { renderWordSource } from './LabWordModel.mjs'
 import {
   AssemblyError,
   MANIFEST_NAME,
@@ -70,6 +79,8 @@ function serialize(project, manifest) {
   return {
     version: manifest.version,
     title: manifest.title,
+    profile: manifest.profile,
+    metadata: manifest.metadata,
     mainDoc: { _id: mainDoc._id.toString(), name: mainDoc.name },
     modules: manifest.modules.map(module => {
       const doc = findDoc(project, moduleFilename(module.id))
@@ -113,7 +124,7 @@ async function get(projectId) {
   return serialize(project, await readManifest(projectId, project))
 }
 
-async function initialize(projectId, userId) {
+async function initialize(projectId, userId, profile) {
   return await lock.promises.runWithLock(
     LOCK_NAMESPACE,
     projectId,
@@ -132,9 +143,37 @@ async function initialize(projectId, userId) {
           409,
         )
       }
-      const manifest = createManifest(project.name)
+      const manifest =
+        profile === CLEANER_PROFILE
+          ? createCleanerManifest()
+          : createManifest(project.name)
       for (const module of manifest.modules) {
-        await addDoc(projectId, project, moduleFilename(module.id), '', userId)
+        const body =
+          module.kind === 'table'
+            ? renderTable(module.table, module.title, module.id)
+            : profile
+              ? initialCleanerBody(module)
+              : ''
+        await addDoc(
+          projectId,
+          project,
+          moduleFilename(module.id),
+          body,
+          userId,
+        )
+      }
+      if (profile === CLEANER_PROFILE) {
+        await EditorController.promises.addFile(
+          projectId,
+          project.rootFolder[0]._id,
+          REFERENCE_DOCX,
+          fileURLToPath(
+            new URL('./assets/cleaner-reference.docx', import.meta.url),
+          ),
+          null,
+          'editor',
+          userId,
+        )
       }
       const mainDoc = await addDoc(
         projectId,
@@ -182,13 +221,44 @@ async function update(projectId, userId, version, operation) {
             projectId,
             project,
             moduleFilename(module.id),
-            '',
+            module.kind === 'table'
+              ? renderTable(module.table, module.title, module.id)
+              : '',
             userId,
           )
         }
       }
-      await setDoc(projectId, mainDoc, renderManifest(next), userId)
+      const changed = next.modules.filter(
+        m =>
+          m.kind === 'table' &&
+          manifest.modules.some(
+            old =>
+              old.id === m.id &&
+              (old.title !== m.title ||
+                JSON.stringify(old.table) !== JSON.stringify(m.table)),
+          ),
+      )
+      for (const module of changed) {
+        const old = manifest.modules.find(m => m.id === module.id)
+        const doc = findDoc(project, moduleFilename(module.id))
+        const body = (await readDoc(projectId, doc)).lines.join('\n')
+        if (body !== renderTable(old.table, old.title, old.id))
+          throw new AssemblyError(
+            '표 LaTeX가 직접 수정되었습니다. 수정본을 보관하고 파일 이력에서 원래 표를 복원해 주세요.',
+            409,
+          )
+      }
       try {
+        for (const module of changed)
+          await setDoc(
+            projectId,
+            findDoc(project, moduleFilename(module.id)),
+            renderTable(module.table, module.title, module.id),
+            userId,
+          )
+        const nextSource = renderManifest(next)
+        if (nextSource !== oldSource)
+          await setDoc(projectId, mainDoc, nextSource, userId)
         await setDoc(
           projectId,
           findDoc(project, MANIFEST_NAME),
@@ -197,6 +267,15 @@ async function update(projectId, userId, version, operation) {
         )
       } catch (error) {
         await setDoc(projectId, mainDoc, oldSource, userId)
+        for (const module of changed) {
+          const old = manifest.modules.find(m => m.id === module.id)
+          await setDoc(
+            projectId,
+            findDoc(project, moduleFilename(module.id)),
+            renderTable(old.table, old.title, old.id),
+            userId,
+          )
+        }
         throw error
       }
       await EditorController.promises.setRootDoc(projectId, mainDoc._id)
@@ -206,4 +285,50 @@ async function update(projectId, userId, version, operation) {
   )
 }
 
-export default { get, initialize, update }
+async function prepareWord(projectId, userId, version, target) {
+  return await lock.promises.runWithLock(
+    LOCK_NAMESPACE,
+    projectId,
+    async () => {
+      const project = await getProject(projectId)
+      const manifest = await readManifest(projectId, project)
+      if (!manifest || manifest.profile !== CLEANER_PROFILE)
+        throw new AssemblyError(
+          'Cleaner Production 01 원고에서 Word 출력을 사용해 주세요.',
+          409,
+        )
+      if (manifest.version !== version)
+        throw new AssemblyError(
+          '최신 구성을 불러온 뒤 다시 다운로드해 주세요.',
+          409,
+        )
+      for (const module of manifest.modules.filter(m => m.kind === 'table')) {
+        const actual = (
+          await readDoc(projectId, findDoc(project, moduleFilename(module.id)))
+        ).lines.join('\n')
+        if (actual !== renderTable(module.table, module.title, module.id))
+          throw new AssemblyError(
+            '직접 수정한 표를 표 편집기와 동기화한 뒤 다운로드해 주세요.',
+            409,
+          )
+      }
+      const { source, settings } = renderWordSource(manifest, target)
+      const name =
+        target === 'highlights' ? 'lab-highlights-word.tex' : 'lab-word.tex'
+      for (const [filename, body] of [
+        [name, source],
+        [name.slice(0, -4) + '-settings.json', JSON.stringify(settings)],
+      ]) {
+        const doc = findDoc(project, filename)
+        if (doc) await setDoc(projectId, doc, body, userId)
+        else await addDoc(projectId, project, filename, body, userId)
+      }
+      const current = await getProject(projectId)
+      return {
+        rootResourcePath: name,
+        rootDoc_id: String(findDoc(current, name)._id),
+      }
+    },
+  )
+}
+export default { get, initialize, update, prepareWord }

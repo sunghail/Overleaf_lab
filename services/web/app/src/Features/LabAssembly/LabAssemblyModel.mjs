@@ -1,17 +1,14 @@
 import { randomUUID } from 'node:crypto'
+import { AssemblyError, escapeLatex } from './LabLatex.mjs'
+import { createTable, validateTable } from './LabTableModel.mjs'
+import { CLEANER_PROFILE, cleanerPreamble } from './LabCleanerTemplate.mjs'
+export { AssemblyError, escapeLatex } from './LabLatex.mjs'
 
 export const MANIFEST_NAME = 'lab-assembly.json'
 export const MAIN_NAME = 'lab-assembled.tex'
 const ID_PATTERN = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
-const KINDS = ['section', 'abstract', 'highlights']
+const KINDS = ['section', 'abstract', 'highlights', 'unnumbered', 'table']
 const SECTION_COMMANDS = ['section', 'subsection', 'subsubsection']
-
-export class AssemblyError extends Error {
-  constructor(message, status = 400) {
-    super(message)
-    this.status = status
-  }
-}
 
 function check(condition, message) {
   if (!condition) throw new AssemblyError(message)
@@ -44,6 +41,20 @@ export function validateManifest(manifest) {
   )
   validTitle(manifest.title)
   check(
+    manifest.profile === undefined || manifest.profile === CLEANER_PROFILE,
+    '지원하지 않는 저널 양식입니다.',
+  )
+  if (manifest.metadata) {
+    check(
+      ['authors', 'affiliations', 'authorNotes'].every(
+        key =>
+          typeof manifest.metadata[key] === 'string' &&
+          manifest.metadata[key].length <= 3000,
+      ),
+      '원고 정보를 확인해 주세요.',
+    )
+  }
+  check(
     Array.isArray(manifest.modules) && manifest.modules.length <= 100,
     '모듈은 최대 100개까지 구성할 수 있습니다.',
   )
@@ -64,12 +75,24 @@ export function validateManifest(manifest) {
       '상위 모듈을 확인해 주세요.',
     )
     check(
-      module.parentId === null || module.kind === 'section',
+      module.parentId === null || ['section', 'table'].includes(module.kind),
       '초록과 Highlights는 논문 최상위에 배치해 주세요.',
     )
+    if (module.kind === 'table') validateTable(module.table)
     nodes.set(module.id, module)
   }
   for (const module of manifest.modules) {
+    if (module.parentId !== null) {
+      check(
+        nodes.get(module.parentId)?.kind !== 'table',
+        '표 안에는 하위 모듈을 넣을 수 없습니다.',
+      )
+      if (module.kind === 'table')
+        check(
+          nodes.get(module.parentId)?.kind === 'section',
+          '표는 일반 섹션 안이나 논문 최상위에 넣어 주세요.',
+        )
+    }
     const seen = new Set([module.id])
     let parentId = module.parentId
     let depth = 1
@@ -118,7 +141,8 @@ export function applyOperation(manifest, version, operation) {
   }
   const next = structuredClone(manifest)
   const module = next.modules.find(item => item.id === operation.id)
-  if (operation.type !== 'add') check(module, '모듈을 찾을 수 없습니다.')
+  if (!['add', 'metadata'].includes(operation.type))
+    check(module, '모듈을 찾을 수 없습니다.')
 
   switch (operation.type) {
     case 'add':
@@ -128,7 +152,16 @@ export function applyOperation(manifest, version, operation) {
         kind: operation.kind,
         parentId: operation.parentId,
         hidden: false,
+        ...(operation.kind === 'table' && { table: createTable() }),
       })
+      break
+    case 'metadata':
+      next.title = operation.title
+      next.metadata = operation.metadata
+      break
+    case 'table':
+      check(module.kind === 'table', '표 모듈을 선택해 주세요.')
+      module.table = validateTable(operation.table)
       break
     case 'rename':
       module.title = operation.title
@@ -158,24 +191,6 @@ export function applyOperation(manifest, version, operation) {
   return validateManifest(next)
 }
 
-export function escapeLatex(text) {
-  const escaped = {
-    '\\': '\\textbackslash{}',
-    '{': '\\{',
-    '}': '\\}',
-    '%': '\\%',
-    '&': '\\&',
-    '#': '\\#',
-    $: '\\$',
-    _: '\\_',
-    '^': '\\textasciicircum{}',
-    '~': '\\textasciitilde{}',
-  }
-  return text
-    .replace(/[\\{}%&#$_^~]/g, char => escaped[char])
-    .replace(/[\r\n]/g, ' ')
-}
-
 function visibleChildren(manifest, parentId) {
   return manifest.modules.filter(
     module => module.parentId === parentId && !module.hidden,
@@ -185,37 +200,60 @@ function visibleChildren(manifest, parentId) {
 export function getModuleNumbers(manifest) {
   validateManifest(manifest)
   const numbers = new Map(manifest.modules.map(module => [module.id, null]))
-  const visit = (parentId, prefix) => {
+  let tableCount = 0
+  const visit = (parentId, prefix, numbered) => {
     let count = 0
     for (const module of visibleChildren(manifest, parentId)) {
-      if (parentId === null && module.kind !== 'section') continue
-      const path = [...prefix, ++count]
-      numbers.set(module.id, path.join('.'))
-      visit(module.id, path)
+      if (module.kind === 'table') {
+        numbers.set(
+          module.id,
+          `Table ${++tableCount}${manifest.profile ? '.' : ':'}`,
+        )
+        continue
+      }
+      const included = numbered && module.kind === 'section'
+      const path = included ? [...prefix, ++count] : prefix
+      if (included)
+        numbers.set(module.id, path.join('.') + (manifest.profile ? '.' : ''))
+      visit(module.id, path, included)
     }
   }
-  visit(null, [])
+  visit(null, [], true)
   return numbers
 }
 
 export function renderManifest(manifest) {
   validateManifest(manifest)
-  const lines = [
-    '% Generated by the lab assembly editor. Edit content in the module files.',
-    '\\documentclass{article}',
-    '\\usepackage{graphicx}',
-    '\\usepackage{amsmath}',
-    `\\title{${escapeLatex(manifest.title)}}`,
-    '\\author{}',
-    '\\date{}',
-    '\\begin{document}',
-    '\\maketitle',
-  ]
+  const lines =
+    manifest.profile === CLEANER_PROFILE
+      ? cleanerPreamble(manifest)
+      : [
+          '% Generated by the lab assembly editor. Edit content in the module files.',
+          '\\documentclass{article}',
+          '\\usepackage{graphicx}',
+          '\\usepackage{amsmath}',
+          `\\title{${escapeLatex(manifest.title)}}`,
+          '\\author{}',
+          '\\date{}',
+          '\\begin{document}',
+          '\\maketitle',
+        ]
+  if (!manifest.profile && manifest.modules.some(m => m.kind === 'table')) {
+    lines.splice(
+      4,
+      0,
+      '\\usepackage{array,booktabs,longtable,multirow,caption,setspace}',
+    )
+  }
   const children = parentId => visibleChildren(manifest, parentId)
   const content = module => {
     lines.push(`\\input{${moduleFilename(module.id)}}`, '\\par')
   }
   const visit = (module, depth, mode) => {
+    if (module.kind === 'table') {
+      content(module)
+      return
+    }
     if (mode === 'abstract') {
       lines.push(`\\noindent\\textbf{${escapeLatex(module.title)}}\\par`)
     } else if (mode === 'highlights') {
@@ -236,11 +274,20 @@ export function renderManifest(manifest) {
   }
   for (const module of children(null)) {
     if (module.kind === 'abstract') {
-      lines.push('\\begin{abstract}')
+      lines.push(
+        manifest.profile
+          ? `\\section*{${escapeLatex(module.title)}}`
+          : '\\begin{abstract}',
+      )
       content(module)
       for (const child of children(module.id)) visit(child, 2, 'abstract')
-      lines.push('\\end{abstract}')
+      if (!manifest.profile) lines.push('\\end{abstract}')
+    } else if (module.kind === 'unnumbered') {
+      lines.push(`\\section*{${escapeLatex(module.title)}}`)
+      content(module)
+      for (const child of children(module.id)) visit(child, 2, 'abstract')
     } else if (module.kind === 'highlights') {
+      if (manifest.profile) lines.push('\\clearpage')
       lines.push(`\\section*{${escapeLatex(module.title)}}`)
       content(module)
       const items = children(module.id)

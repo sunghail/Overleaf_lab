@@ -48,6 +48,7 @@ const DATA_DIR = '/var/lib/overleaf/data'
 const TMP_DIR = '/var/lib/overleaf/tmp'
 
 const settings = {
+  enablePandocConversions: process.env.ENABLE_PANDOC_CONVERSIONS === 'true',
   clsi: {
     optimiseInDocker: process.env.OPTIMISE_PDF === 'true',
   },

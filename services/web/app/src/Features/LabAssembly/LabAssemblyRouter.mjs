@@ -5,6 +5,14 @@ import { parseReq, z, zz } from '../../infrastructure/Validation.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import Manager from './LabAssemblyManager.mjs'
 import { AssemblyError } from './LabAssemblyModel.mjs'
+import AuthenticationController from '../Authentication/AuthenticationController.mjs'
+import {
+  listTemplates,
+  saveTemplate,
+  createFromTemplate,
+} from './LabTemplateManager.mjs'
+import DocumentConversionManager from '../Uploads/DocumentConversionManager.mjs'
+import { pipeline } from 'node:stream/promises'
 
 const id = z.string().uuid()
 const title = z.string().trim().min(1).max(200)
@@ -14,12 +22,32 @@ const operation = z.discriminatedUnion('type', [
     .object({
       type: z.literal('add'),
       title,
-      kind: z.enum(['section', 'abstract', 'highlights']),
+      kind: z.enum([
+        'section',
+        'abstract',
+        'highlights',
+        'unnumbered',
+        'table',
+      ]),
       parentId: id.nullable(),
     })
     .strict(),
   z.object({ type: z.literal('rename'), id, title }).strict(),
   z.object({ type: z.literal('visibility'), id, hidden: z.boolean() }).strict(),
+  z.object({ type: z.literal('table'), id, table: z.unknown() }).strict(),
+  z
+    .object({
+      type: z.literal('metadata'),
+      title,
+      metadata: z
+        .object({
+          authors: z.string().max(3000),
+          affiliations: z.string().max(3000),
+          authorNotes: z.string().max(3000),
+        })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal('move'),
@@ -83,6 +111,119 @@ export default {
       AsyncLocalStorage.middleware,
       AuthorizationMiddleware.ensureUserCanWriteProjectContent,
       handle('update'),
+    )
+    webRouter.get(
+      '/lab-templates',
+      AuthenticationController.requireLogin(),
+      expressify(async (req, res) => {
+        res.json(
+          await listTemplates(SessionManager.getLoggedInUserId(req.session)),
+        )
+      }),
+    )
+    webRouter.post(
+      '/lab-templates/create',
+      AuthenticationController.requireLogin(),
+      AsyncLocalStorage.middleware,
+      expressify(async (req, res) => {
+        const input = parseReq(
+          req,
+          z.object({
+            body: z
+              .object({
+                templateId: z.union([
+                  z.literal('cleaner-production-01'),
+                  zz.objectId(),
+                ]),
+                name: title,
+              })
+              .strict(),
+          }),
+        )
+        try {
+          res.json(
+            await createFromTemplate(
+              SessionManager.getLoggedInUserId(req.session),
+              input.body.templateId,
+              input.body.name,
+            ),
+          )
+        } catch (error) {
+          if (!(error instanceof AssemblyError)) throw error
+          res.status(error.status).json({ message: error.message })
+        }
+      }),
+    )
+    webRouter.post(
+      `${route}/template`,
+      AsyncLocalStorage.middleware,
+      AuthorizationMiddleware.ensureUserCanReadProject,
+      expressify(async (req, res) => {
+        const input = parseReq(
+          req,
+          z.object({ params, body: z.object({ name: title }).strict() }),
+        )
+        res.json(
+          await saveTemplate(
+            SessionManager.getLoggedInUserId(req.session),
+            input.params.Project_id,
+            input.body.name,
+          ),
+        )
+      }),
+    )
+    webRouter.post(
+      `${route}/word`,
+      AsyncLocalStorage.middleware,
+      AuthorizationMiddleware.ensureUserCanWriteProjectContent,
+      expressify(async (req, res) => {
+        const input = parseReq(
+          req,
+          z.object({
+            params,
+            body: z
+              .object({
+                version: z.number().int().min(1),
+                target: z.enum(['manuscript', 'highlights']),
+              })
+              .strict(),
+          }),
+        )
+        const projectId = input.params.Project_id,
+          userId = SessionManager.getLoggedInUserId(req.session)
+        try {
+          const rootOptions = await Manager.prepareWord(
+            projectId,
+            userId,
+            input.body.version,
+            input.body.target,
+          )
+          const output =
+            await DocumentConversionManager.promises.convertProjectToDocument(
+              projectId,
+              userId,
+              'docx',
+              { ...rootOptions, compileFromHistory: false },
+            )
+          const { stream } =
+            await DocumentConversionManager.promises.streamConvertedProjectDocument(
+              output,
+            )
+          res.attachment(
+            input.body.target === 'highlights'
+              ? 'Highlights.docx'
+              : 'Cleaner_Production_Manuscript.docx',
+          )
+          await pipeline(stream, res)
+        } catch (error) {
+          if (res.headersSent) throw error
+          if (error instanceof AssemblyError)
+            res.status(error.status).json({ message: error.message })
+          else if (error.name === 'DocumentConversionError')
+            res.status(422).json({ message: error.message })
+          else throw error
+        }
+      }),
     )
   },
 }

@@ -16,6 +16,7 @@ const DeletedDocSchema = new Schema({
 export const ProjectSchema = new Schema(
   {
     name: { type: String, default: 'new project' },
+    labTemplateName: { type: String },
     lastUpdated: {
       type: Date,
       default() {

@@ -5,6 +5,7 @@ import Path from 'node:path'
 import CommandRunner from './CommandRunner.js'
 import LockManager from './LockManager.js'
 import OError from '@overleaf/o-error'
+import { fileURLToPath } from 'node:url'
 import { ConversionError } from './Errors.js'
 
 const CONVERSION_CONFIGS = {
@@ -218,6 +219,13 @@ async function convertLaTeXToDocumentInDir(
 
   if (!config.compressOutput) {
     const outputName = `${outputId}.${config.fileExtension}`
+    const labWord =
+      type === 'docx' &&
+      ['lab-word.tex', 'lab-highlights-word.tex'].includes(
+        Path.basename(rootDocPath)
+      )
+    const labArgs = labWord ? ['--reference-doc=lab-reference.docx'] : []
+    if (labWord) await fs.access(Path.join(compileDir, 'lab-reference.docx'))
     const { exitCode, stdout, stderr } = await CommandRunner.promises.run(
       conversionId,
       [
@@ -225,6 +233,7 @@ async function convertLaTeXToDocumentInDir(
         rootDocPath,
         ...config.getPandocArgs({ outputPath: outputName }),
         '--resource-path=.',
+        ...labArgs,
       ],
       compileDir,
       Settings.pandocImage,
@@ -240,6 +249,33 @@ async function convertLaTeXToDocumentInDir(
         exitCode,
         stderr,
       })
+    }
+
+    if (labWord) {
+      const script = '.lab-format-docx.py'
+      await fs.copyFile(
+        fileURLToPath(new URL('./lab-docx-format.py', import.meta.url)),
+        Path.join(compileDir, script)
+      )
+      const formatted = await CommandRunner.promises.run(
+        conversionId,
+        [
+          'python3',
+          script,
+          outputName,
+          `${Path.basename(rootDocPath, '.tex')}-settings.json`,
+        ],
+        compileDir,
+        Settings.pandocImage,
+        timeoutMs,
+        {},
+        'conversions',
+        null
+      )
+      if (formatted.exitCode !== 0)
+        throw new ConversionError('Word table formatting failed', {
+          stderr: formatted.stderr,
+        })
     }
 
     logger.debug(

@@ -44,6 +44,8 @@ For this lab's local source development environment, see [연구실 개발 환�
 
 The lab's agreed development sequence is recorded in [개발 단계](docs/ROADMAP.md).
 
+Reusable Word-style manuscripts and editable tables are described in [Cleaner Production 01](docs/CLEANER_TEMPLATE.md).
+
 ## Upgrading
 
 If you are upgrading from a previous version of Overleaf, please see the [Release Notes section on the Wiki](https://github.com/overleaf/overleaf/wiki#release-notes) for all of the versions between your current version and the version you are upgrading to.
