@@ -7,6 +7,7 @@ import {
   validateManifest,
   applyOperation,
   renderManifest,
+  getModuleNumbers,
   moduleFilename,
   escapeLatex,
 } from '../../app/src/Features/LabAssembly/LabAssemblyModel.mjs'
@@ -14,6 +15,118 @@ import {
 function find(manifest, title) {
   return manifest.modules.find(module => module.title === title)
 }
+
+test('module numbers match the three numbered article heading levels', () => {
+  let manifest = createManifest('Paper')
+  manifest = applyOperation(manifest, 1, {
+    type: 'add',
+    title: 'Sampling',
+    kind: 'section',
+    parentId: find(manifest, 'Data collection').id,
+  })
+  const numbers = getModuleNumbers(manifest)
+  const number = title => numbers.get(find(manifest, title).id)
+  assert.equal(number('Abstract'), null)
+  assert.equal(number('Introduction'), '1')
+  assert.equal(number('Methods'), '2')
+  assert.equal(number('Data collection'), '2.1')
+  assert.equal(number('Sampling'), '2.1.1')
+  assert.equal(number('Model training'), '2.2')
+  assert.equal(number('Results'), '3')
+  assert.equal(number('Conclusion'), '4')
+})
+
+test('numbers follow sibling reorder and reparenting without changing titles', () => {
+  let manifest = createManifest('Paper')
+  const data = find(manifest, 'Data collection')
+  const training = find(manifest, 'Model training')
+  manifest = applyOperation(manifest, 1, {
+    type: 'move',
+    id: training.id,
+    parentId: data.parentId,
+    beforeId: data.id,
+  })
+  let numbers = getModuleNumbers(manifest)
+  assert.equal(numbers.get(training.id), '2.1')
+  assert.equal(numbers.get(data.id), '2.2')
+  manifest = applyOperation(manifest, 2, {
+    type: 'move',
+    id: data.id,
+    parentId: find(manifest, 'Results').id,
+    beforeId: null,
+  })
+  numbers = getModuleNumbers(manifest)
+  assert.equal(numbers.get(data.id), '3.1')
+  assert.equal(find(manifest, 'Data collection').title, data.title)
+})
+
+test('hidden modules and descendants consume no numbers, and restoration renumbers them', () => {
+  let manifest = createManifest('Paper')
+  const methods = find(manifest, 'Methods')
+  const data = find(manifest, 'Data collection')
+  const training = find(manifest, 'Model training')
+  manifest = applyOperation(manifest, 1, {
+    type: 'visibility',
+    id: data.id,
+    hidden: true,
+  })
+  assert.equal(getModuleNumbers(manifest).get(training.id), '2.1')
+  manifest = applyOperation(manifest, 2, {
+    type: 'visibility',
+    id: methods.id,
+    hidden: true,
+  })
+  const numbers = getModuleNumbers(manifest)
+  assert.equal(numbers.get(methods.id), null)
+  assert.equal(numbers.get(data.id), null)
+  assert.equal(numbers.get(training.id), null)
+  assert.equal(numbers.get(find(manifest, 'Results').id), '2')
+  manifest = applyOperation(manifest, 3, {
+    type: 'visibility',
+    id: methods.id,
+    hidden: false,
+  })
+  assert.equal(getModuleNumbers(manifest).get(methods.id), '2')
+  assert.equal(getModuleNumbers(manifest).get(training.id), '2.1')
+  assert.equal(getModuleNumbers(manifest).get(data.id), null)
+})
+
+test('abstract and highlights subtrees stay unnumbered regardless of their position', () => {
+  let manifest = createManifest('Paper')
+  const data = find(manifest, 'Data collection')
+  manifest = applyOperation(manifest, 1, {
+    type: 'move',
+    id: data.id,
+    parentId: find(manifest, 'Abstract').id,
+    beforeId: null,
+  })
+  manifest = applyOperation(manifest, 2, {
+    type: 'add',
+    title: 'Highlights',
+    kind: 'highlights',
+    parentId: null,
+  })
+  const highlights = find(manifest, 'Highlights')
+  manifest = applyOperation(manifest, 3, {
+    type: 'move',
+    id: highlights.id,
+    parentId: null,
+    beforeId: find(manifest, 'Introduction').id,
+  })
+  const training = find(manifest, 'Model training')
+  manifest = applyOperation(manifest, 4, {
+    type: 'move',
+    id: training.id,
+    parentId: highlights.id,
+    beforeId: null,
+  })
+  const numbers = getModuleNumbers(manifest)
+  assert.equal(numbers.get(data.id), null)
+  assert.equal(numbers.get(highlights.id), null)
+  assert.equal(numbers.get(training.id), null)
+  assert.equal(numbers.get(find(manifest, 'Introduction').id), '1')
+  assert.equal(numbers.get(find(manifest, 'Methods').id), '2')
+})
 
 test('initial structure has unique files, typed abstract, and nested methods', () => {
   const manifest = createManifest('Paper')

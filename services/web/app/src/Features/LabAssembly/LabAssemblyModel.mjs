@@ -176,6 +176,28 @@ export function escapeLatex(text) {
     .replace(/[\r\n]/g, ' ')
 }
 
+function visibleChildren(manifest, parentId) {
+  return manifest.modules.filter(
+    module => module.parentId === parentId && !module.hidden,
+  )
+}
+
+export function getModuleNumbers(manifest) {
+  validateManifest(manifest)
+  const numbers = new Map(manifest.modules.map(module => [module.id, null]))
+  const visit = (parentId, prefix) => {
+    let count = 0
+    for (const module of visibleChildren(manifest, parentId)) {
+      if (parentId === null && module.kind !== 'section') continue
+      const path = [...prefix, ++count]
+      numbers.set(module.id, path.join('.'))
+      visit(module.id, path)
+    }
+  }
+  visit(null, [])
+  return numbers
+}
+
 export function renderManifest(manifest) {
   validateManifest(manifest)
   const lines = [
@@ -189,8 +211,7 @@ export function renderManifest(manifest) {
     '\\begin{document}',
     '\\maketitle',
   ]
-  const children = parentId =>
-    manifest.modules.filter(item => item.parentId === parentId && !item.hidden)
+  const children = parentId => visibleChildren(manifest, parentId)
   const content = module => {
     lines.push(`\\input{${moduleFilename(module.id)}}`, '\\par')
   }

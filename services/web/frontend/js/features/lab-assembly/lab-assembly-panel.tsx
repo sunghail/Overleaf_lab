@@ -20,6 +20,7 @@ type Module = {
   kind: Kind
   parentId: string | null
   hidden: boolean
+  number: string | null
   doc: Doc
 }
 type Assembly = {
@@ -40,6 +41,8 @@ type Operation =
     }
 
 const ROOT = ''
+const moduleLabel = (module: Module) =>
+  module.number ? `${module.number} ${module.title}` : module.title
 const errorMessage = (error: unknown) =>
   getUserFacingMessage(error as Error) || '작업을 완료하지 못했습니다.'
 
@@ -238,7 +241,7 @@ export default function LabAssemblyPanel() {
                 type="button"
                 className={`lab-assembly-module${selectedId === module.id ? ' selected' : ''}${hidden ? ' is-hidden' : ''}${dropId === module.id ? ' drop-target' : ''}`}
                 aria-pressed={selectedId === module.id}
-                aria-label={`${module.title} 본문 편집${hidden ? ' (숨김)' : ''}`}
+                aria-label={`${moduleLabel(module)} 본문 편집${hidden ? ' (숨김)' : ''}`}
                 draggable={editable}
                 onClick={() => openModule(module)}
                 onDragStart={event => {
@@ -277,7 +280,7 @@ export default function LabAssemblyPanel() {
                 }}
                 onDragEnd={() => setDropId(null)}
               >
-                <span>{module.title}</span>
+                <span>{moduleLabel(module)}</span>
                 {hidden && <small>숨김</small>}
               </button>
               {renderModules(module.id)}
@@ -337,7 +340,7 @@ export default function LabAssemblyPanel() {
           <nav aria-label="논문 모듈">{renderModules(null)}</nav>
           {selected && (
             <div className="lab-assembly-selection">
-              <strong>{selected.title}</strong>
+              <strong>{moduleLabel(selected)}</strong>
               {effectivelyHidden(selected) && (
                 <p>이 모듈은 PDF에서 제외됩니다. 본문은 보관됩니다.</p>
               )}
@@ -431,7 +434,7 @@ export default function LabAssemblyPanel() {
                         )
                         .map(module => (
                           <option key={module.id} value={module.id}>
-                            {module.title}
+                            {moduleLabel(module)}
                           </option>
                         ))}
                     </select>
@@ -482,7 +485,7 @@ export default function LabAssemblyPanel() {
               <option value={ROOT}>논문 최상위</option>
               {parents.map(module => (
                 <option key={module.id} value={module.id}>
-                  {module.title} 안
+                  {moduleLabel(module)} 안
                 </option>
               ))}
             </select>

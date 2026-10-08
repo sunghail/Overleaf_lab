@@ -11,6 +11,7 @@ import {
   validateManifest,
   moduleFilename,
   renderManifest,
+  getModuleNumbers,
   applyOperation,
 } from './LabAssemblyModel.mjs'
 
@@ -65,6 +66,7 @@ function serialize(project, manifest) {
   if (!manifest) return null
   const mainDoc = findDoc(project, MAIN_NAME)
   if (!mainDoc) throw new AssemblyError('조립 문서 파일을 복원해 주세요.', 409)
+  const numbers = getModuleNumbers(manifest)
   return {
     version: manifest.version,
     title: manifest.title,
@@ -76,7 +78,11 @@ function serialize(project, manifest) {
           `“${module.title}”의 본문 파일을 복원해 주세요.`,
           409,
         )
-      return { ...module, doc: { _id: doc._id.toString(), name: doc.name } }
+      return {
+        ...module,
+        number: numbers.get(module.id),
+        doc: { _id: doc._id.toString(), name: doc.name },
+      }
     }),
   }
 }
