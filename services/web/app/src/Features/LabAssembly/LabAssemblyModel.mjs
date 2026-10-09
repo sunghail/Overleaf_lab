@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { AssemblyError, escapeLatex } from './LabLatex.mjs'
 import { createTable, validateTable } from './LabTableModel.mjs'
 import { CLEANER_PROFILE, cleanerPreamble } from './LabCleanerTemplate.mjs'
+import { createFigure, validateFigure, renderFigure } from './LabFigureModel.mjs'
 export { AssemblyError, escapeLatex } from './LabLatex.mjs'
 
 export const MANIFEST_NAME = 'lab-assembly.json'
 export const MAIN_NAME = 'lab-assembled.tex'
 const ID_PATTERN = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
-const KINDS = ['section', 'abstract', 'highlights', 'unnumbered', 'table']
+const KINDS = ['section', 'abstract', 'highlights', 'unnumbered', 'table', 'figure']
 const SECTION_COMMANDS = ['section', 'subsection', 'subsubsection']
 
 function check(condition, message) {
@@ -68,6 +69,7 @@ export function validateManifest(manifest) {
     validTitle(module.title)
     check(KINDS.includes(module.kind), '모듈 종류가 올바르지 않습니다.')
     check(typeof module.hidden === 'boolean', '숨김 설정이 올바르지 않습니다.')
+    check(module.numbered === undefined || typeof module.numbered === 'boolean', '번호 설정이 올바르지 않습니다.')
     check(
       module.parentId === null ||
         (typeof module.parentId === 'string' &&
@@ -75,22 +77,23 @@ export function validateManifest(manifest) {
       '상위 모듈을 확인해 주세요.',
     )
     check(
-      module.parentId === null || ['section', 'table'].includes(module.kind),
+      module.parentId === null || ['section', 'unnumbered', 'table', 'figure'].includes(module.kind),
       '초록과 Highlights는 논문 최상위에 배치해 주세요.',
     )
     if (module.kind === 'table') validateTable(module.table)
+    if (module.kind === 'figure') validateFigure(module.figure)
     nodes.set(module.id, module)
   }
   for (const module of manifest.modules) {
     if (module.parentId !== null) {
       check(
-        nodes.get(module.parentId)?.kind !== 'table',
-        '표 안에는 하위 모듈을 넣을 수 없습니다.',
+        !['table', 'figure'].includes(nodes.get(module.parentId)?.kind),
+        '표와 그림 안에는 하위 모듈을 넣을 수 없습니다.',
       )
-      if (module.kind === 'table')
+      if (['table', 'figure'].includes(module.kind))
         check(
-          nodes.get(module.parentId)?.kind === 'section',
-          '표는 일반 섹션 안이나 논문 최상위에 넣어 주세요.',
+          ['section', 'unnumbered'].includes(nodes.get(module.parentId)?.kind),
+          '표와 그림은 섹션 안이나 논문 최상위에 넣어 주세요.',
         )
     }
     const seen = new Set([module.id])
@@ -153,6 +156,7 @@ export function applyOperation(manifest, version, operation) {
         parentId: operation.parentId,
         hidden: false,
         ...(operation.kind === 'table' && { table: createTable() }),
+        ...(operation.kind === 'figure' && { figure: createFigure() }),
       })
       break
     case 'metadata':
@@ -162,6 +166,22 @@ export function applyOperation(manifest, version, operation) {
     case 'table':
       check(module.kind === 'table', '표 모듈을 선택해 주세요.')
       module.table = validateTable(operation.table)
+      break
+    case 'figure':
+      check(module.kind === 'figure', '그림 모듈을 선택해 주세요.')
+      module.figure = validateFigure(operation.figure)
+      break
+    case 'numbering':
+      check(['section', 'table', 'figure'].includes(module.kind), '이 역할은 제목 번호를 사용하지 않습니다.')
+      check(typeof operation.numbered === 'boolean', '번호 설정을 확인해 주세요.')
+      module.numbered = operation.numbered
+      break
+    case 'role':
+      check(KINDS.includes(operation.kind), '모듈 역할을 확인해 주세요.')
+      check(module.kind === operation.kind || (module.kind !== 'table' && operation.kind !== 'table'),
+        '표의 편집 데이터를 보존하기 위해 표 역할 전환은 지원하지 않습니다. 새 표를 추가해 주세요.')
+      module.kind = operation.kind
+      if (module.kind === 'figure') module.figure ||= createFigure()
       break
     case 'rename':
       module.title = operation.title
@@ -201,17 +221,21 @@ export function getModuleNumbers(manifest) {
   validateManifest(manifest)
   const numbers = new Map(manifest.modules.map(module => [module.id, null]))
   let tableCount = 0
+  let figureCount = 0
   const visit = (parentId, prefix, numbered) => {
     let count = 0
     for (const module of visibleChildren(manifest, parentId)) {
       if (module.kind === 'table') {
-        numbers.set(
-          module.id,
-          `Table ${++tableCount}${manifest.profile ? '.' : ':'}`,
-        )
+        if (module.numbered !== false)
+          numbers.set(module.id, `Table ${++tableCount}${manifest.profile ? '.' : ':'}`)
         continue
       }
-      const included = numbered && module.kind === 'section'
+      if (module.kind === 'figure') {
+        if (module.numbered !== false)
+          numbers.set(module.id, `Figure ${++figureCount}${manifest.profile ? '.' : ':'}`)
+        continue
+      }
+      const included = numbered && module.kind === 'section' && module.numbered !== false
       const path = included ? [...prefix, ++count] : prefix
       if (included)
         numbers.set(module.id, path.join('.') + (manifest.profile ? '.' : ''))
@@ -238,7 +262,7 @@ export function renderManifest(manifest) {
           '\\begin{document}',
           '\\maketitle',
         ]
-  if (!manifest.profile && manifest.modules.some(m => m.kind === 'table')) {
+  if (!manifest.profile && manifest.modules.some(m => ['table', 'figure'].includes(m.kind))) {
     lines.splice(
       4,
       0,
@@ -246,6 +270,7 @@ export function renderManifest(manifest) {
     )
   }
   const children = parentId => visibleChildren(manifest, parentId)
+  const numbers = getModuleNumbers(manifest)
   const content = module => {
     lines.push(`\\input{${moduleFilename(module.id)}}`, '\\par')
   }
@@ -254,15 +279,19 @@ export function renderManifest(manifest) {
       content(module)
       return
     }
+    if (module.kind === 'figure') {
+      lines.push(renderFigure(module))
+      return
+    }
     if (mode === 'abstract') {
       lines.push(`\\noindent\\textbf{${escapeLatex(module.title)}}\\par`)
     } else if (mode === 'highlights') {
       lines.push('\\item')
     } else {
       lines.push(
-        `\\${SECTION_COMMANDS[depth - 1]}{${escapeLatex(module.title)}}`,
-        `\\label{lab:${module.id}}`,
+        `\\${SECTION_COMMANDS[depth - 1]}${numbers.get(module.id) === null ? '*' : ''}{${escapeLatex(module.title)}}`,
       )
+      if (numbers.get(module.id) !== null) lines.push(`\\label{lab:${module.id}}`)
     }
     content(module)
     const descendants = children(module.id)

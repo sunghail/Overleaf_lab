@@ -12,6 +12,7 @@ import {
 } from './LabCleanerTemplate.mjs'
 import { renderTable } from './LabTableModel.mjs'
 import { renderWordSource } from './LabWordModel.mjs'
+import { isFigurePath } from './LabFigureModel.mjs'
 import {
   AssemblyError,
   MANIFEST_NAME,
@@ -81,6 +82,7 @@ function serialize(project, manifest) {
     title: manifest.title,
     profile: manifest.profile,
     metadata: manifest.metadata,
+    imageFiles: imageFiles(project),
     mainDoc: { _id: mainDoc._id.toString(), name: mainDoc.name },
     modules: manifest.modules.map(module => {
       const doc = findDoc(project, moduleFilename(module.id))
@@ -96,6 +98,23 @@ function serialize(project, manifest) {
       }
     }),
   }
+}
+
+function imageFiles(project) {
+  const paths = []
+  const visit = (folder, prefix) => {
+    for (const file of folder.fileRefs || []) {
+      const path = prefix + file.name
+      if (isFigurePath(path)) paths.push(path)
+    }
+    for (const child of folder.folders || []) visit(child, prefix + child.name + '/')
+  }
+  visit(project.rootFolder[0], '')
+  return paths.sort()
+}
+
+function tableBody(module) {
+  return renderTable(module.table, module.title, module.id, { numbered: module.numbered !== false })
 }
 
 async function addDoc(projectId, project, name, text, userId) {
@@ -207,6 +226,8 @@ async function update(projectId, userId, version, operation) {
         throw new AssemblyError('먼저 모듈 구성을 시작해 주세요.', 409)
       serialize(project, manifest)
       const next = applyOperation(manifest, version, operation)
+      if (operation.type === 'figure' && operation.figure.path && !imageFiles(project).includes(operation.figure.path))
+        throw new AssemblyError('프로젝트에 업로드한 그림 파일을 선택해 주세요.', 409)
       const mainDoc = findDoc(project, MAIN_NAME)
       const oldSource = (await readDoc(projectId, mainDoc)).lines.join('\n')
       if (oldSource !== renderManifest(manifest)) {
@@ -222,7 +243,7 @@ async function update(projectId, userId, version, operation) {
             project,
             moduleFilename(module.id),
             module.kind === 'table'
-              ? renderTable(module.table, module.title, module.id)
+              ? tableBody(module)
               : '',
             userId,
           )
@@ -235,6 +256,7 @@ async function update(projectId, userId, version, operation) {
             old =>
               old.id === m.id &&
               (old.title !== m.title ||
+                old.numbered !== m.numbered ||
                 JSON.stringify(old.table) !== JSON.stringify(m.table)),
           ),
       )
@@ -242,7 +264,7 @@ async function update(projectId, userId, version, operation) {
         const old = manifest.modules.find(m => m.id === module.id)
         const doc = findDoc(project, moduleFilename(module.id))
         const body = (await readDoc(projectId, doc)).lines.join('\n')
-        if (body !== renderTable(old.table, old.title, old.id))
+        if (body !== tableBody(old))
           throw new AssemblyError(
             '표 LaTeX가 직접 수정되었습니다. 수정본을 보관하고 파일 이력에서 원래 표를 복원해 주세요.',
             409,
@@ -253,7 +275,7 @@ async function update(projectId, userId, version, operation) {
           await setDoc(
             projectId,
             findDoc(project, moduleFilename(module.id)),
-            renderTable(module.table, module.title, module.id),
+            tableBody(module),
             userId,
           )
         const nextSource = renderManifest(next)
@@ -272,7 +294,7 @@ async function update(projectId, userId, version, operation) {
           await setDoc(
             projectId,
             findDoc(project, moduleFilename(module.id)),
-            renderTable(old.table, old.title, old.id),
+            tableBody(old),
             userId,
           )
         }
@@ -306,7 +328,7 @@ async function prepareWord(projectId, userId, version, target) {
         const actual = (
           await readDoc(projectId, findDoc(project, moduleFilename(module.id)))
         ).lines.join('\n')
-        if (actual !== renderTable(module.table, module.title, module.id))
+        if (actual !== tableBody(module))
           throw new AssemblyError(
             '직접 수정한 표를 표 편집기와 동기화한 뒤 다운로드해 주세요.',
             409,

@@ -16,8 +16,23 @@ import { Doc } from '../../../../types/doc'
 import LabTableEditor from './lab-table-editor'
 import LabTemplatePanel from './lab-template-panel'
 import getMeta from '@/utils/meta'
+import { dropMove, dropPosition, DropPosition } from './lab-module-drag'
 
-type Kind = 'section' | 'abstract' | 'highlights' | 'unnumbered' | 'table'
+type Kind =
+  | 'section'
+  | 'abstract'
+  | 'highlights'
+  | 'unnumbered'
+  | 'table'
+  | 'figure'
+const roles: { value: Kind; label: string }[] = [
+  { value: 'section', label: '섹션' },
+  { value: 'unnumbered', label: '번호 없는 구성' },
+  { value: 'abstract', label: '초록' },
+  { value: 'highlights', label: 'Highlights' },
+  { value: 'table', label: '표' },
+  { value: 'figure', label: 'Figure · 그림' }
+]
 export type LabTable = {
   cells: string[][]
   math: boolean[][]
@@ -39,6 +54,8 @@ export type Module = {
   number: string | null
   doc: Doc
   table?: LabTable
+  figure?: { path: string; width: number }
+  numbered?: boolean
 }
 export type Assembly = {
   version: number
@@ -47,11 +64,15 @@ export type Assembly = {
   modules: Module[]
   profile?: string
   metadata?: Metadata
+  imageFiles?: string[]
 }
 type Operation =
   | { type: 'add'; title: string; kind: Kind; parentId: string | null }
   | { type: 'rename'; id: string; title: string }
   | { type: 'visibility'; id: string; hidden: boolean }
+  | { type: 'numbering'; id: string; numbered: boolean }
+  | { type: 'role'; id: string; kind: Kind }
+  | { type: 'figure'; id: string; figure: { path: string; width: number } }
   | { type: 'table'; id: string; table: LabTable }
   | { type: 'metadata'; title: string; metadata: Metadata }
   | {
@@ -102,7 +123,15 @@ export default function LabAssemblyWidget({
   const [renameTitle, setRenameTitle] = useState('')
   const [moveParent, setMoveParent] = useState(ROOT)
   const [visualDoc, setVisualDoc] = useState<string | null>(null)
-  const [dropId, setDropId] = useState<string | null>(null)
+  const [drop, setDrop] = useState<{
+    id: string
+    position: DropPosition
+    allowed: boolean
+  } | null>(null)
+  const dragging = useRef<string | null>(null)
+  const [roleKind, setRoleKind] = useState<Kind>('section')
+  const [figurePath, setFigurePath] = useState('')
+  const [figureWidth, setFigureWidth] = useState(80)
   const [showTemplates, setShowTemplates] = useState(false)
   const [tableEditing, setTableEditing] = useState<string | null>(null)
   const selectionDoc = useRef<string | null>(null)
@@ -151,6 +180,15 @@ export default function LabAssemblyWidget({
     setRenameTitle(selected?.title || '')
     setMoveParent(selected?.parentId || ROOT)
   }, [selected?.id, selected?.title, selected?.parentId])
+
+  useEffect(
+    () => setRoleKind(selected?.kind || 'section'),
+    [selected?.id, selected?.kind]
+  )
+  useEffect(() => {
+    setFigurePath(selected?.figure?.path || '')
+    setFigureWidth(selected?.figure?.width || 80)
+  }, [selected?.id, selected?.figure?.path, selected?.figure?.width])
 
   useEffect(() => {
     if (visualDoc && visualDoc === currentDocumentId) {
@@ -285,7 +323,7 @@ export default function LabAssemblyWidget({
     module.hidden ||
     modules.some(parent => parent.hidden && isDescendant(module.id, parent.id))
   const parents = modules.filter(
-    module => depthOf(module) < 3 && module.kind !== 'table'
+    module => depthOf(module) < 3 && !['table', 'figure'].includes(module.kind)
   )
   const siblings = modules.filter(
     module => module.parentId === selected?.parentId
@@ -327,7 +365,7 @@ export default function LabAssemblyWidget({
             <li key={module.id}>
               <button
                 type="button"
-                className={`lab-assembly-module${selectedId === module.id ? ' selected' : ''}${hidden ? ' is-hidden' : ''}${dropId === module.id ? ' drop-target' : ''}`}
+                className={`lab-assembly-module${selectedId === module.id ? ' selected' : ''}${hidden ? ' is-hidden' : ''}${drop?.id === module.id ? ` drop-${drop.position}${drop.allowed ? '' : ' drop-invalid'}` : ''}`}
                 aria-pressed={selectedId === module.id}
                 aria-label={`${moduleLabel(module)} 본문 편집${hidden ? ' (숨김)' : ''}`}
                 draggable={editable}
@@ -338,6 +376,7 @@ export default function LabAssemblyWidget({
                     module.id
                   )
                   event.dataTransfer.effectAllowed = 'move'
+                  dragging.current = module.id
                 }}
                 onDragOver={event => {
                   if (
@@ -346,30 +385,64 @@ export default function LabAssemblyWidget({
                       'application/x-lab-module'
                     )
                   ) {
-                    event.preventDefault()
-                    setDropId(module.id)
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    const position = dropPosition(
+                      event.clientY,
+                      rect.top,
+                      rect.height
+                    )
+                    const allowed = !!dropMove(
+                      modules,
+                      dragging.current || '',
+                      module.id,
+                      position
+                    )
+                    event.dataTransfer.dropEffect = allowed ? 'move' : 'none'
+                    if (allowed) event.preventDefault()
+                    setDrop({ id: module.id, position, allowed })
                   }
                 }}
-                onDragLeave={() => setDropId(null)}
+                onDragLeave={event => {
+                  if (
+                    !event.currentTarget.contains(event.relatedTarget as Node)
+                  )
+                    setDrop(null)
+                }}
                 onDrop={event => {
                   event.preventDefault()
-                  setDropId(null)
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  const position = dropPosition(
+                    event.clientY,
+                    rect.top,
+                    rect.height
+                  )
+                  setDrop(null)
                   const id = event.dataTransfer.getData(
                     'application/x-lab-module'
                   )
-                  if (id && id !== module.id) {
-                    mutate({
-                      type: 'move',
-                      id,
-                      parentId: module.parentId,
-                      beforeId: module.id
-                    })
-                  }
+                  const operation = dropMove(modules, id, module.id, position)
+                  if (operation) mutate(operation)
                 }}
-                onDragEnd={() => setDropId(null)}
+                onDragEnd={() => {
+                  dragging.current = null
+                  setDrop(null)
+                }}
               >
                 <span>{moduleLabel(module)}</span>
-                {hidden && <small>숨김</small>}
+                <span className="lab-module-role">
+                  <small>
+                    {drop?.id === module.id
+                      ? !drop.allowed
+                        ? '넣을 수 없는 위치'
+                        : {
+                            before: '위에 넣기',
+                            inside: '하위에 넣기',
+                            after: '아래에 넣기'
+                          }[drop.position]
+                      : roles.find(r => r.value === module.kind)?.label}
+                  </small>
+                  {hidden && <small>숨김</small>}
+                </span>
               </button>
               {renderModules(module.id)}
             </li>
@@ -510,9 +583,8 @@ export default function LabAssemblyWidget({
             )}
             <div className="lab-assembly-outline">
               <p className="lab-assembly-help">
-                {standalone
-                  ? '모듈을 선택해 설정을 바꾸세요. 끌어서 순서를 바꾸거나 상위 모듈을 정할 수 있습니다.'
-                  : '모듈을 클릭해 본문을 작성하세요. 끌어서 다른 모듈 앞에 놓거나 이동 버튼으로 순서를 바꿀 수 있습니다.'}
+                끌어 놓을 대상의 위쪽은 앞에, 가운데는 하위에, 아래쪽은 뒤에
+                배치합니다.
               </p>
               <label className="lab-assembly-checkbox">
                 <input
@@ -527,6 +599,133 @@ export default function LabAssemblyWidget({
             {selected && (
               <div className="lab-assembly-selection">
                 <strong>{moduleLabel(selected)}</strong>
+                <form
+                  onSubmit={event => {
+                    event.preventDefault()
+                    mutate({ type: 'role', id: selected.id, kind: roleKind })
+                  }}
+                >
+                  <label htmlFor="lab-module-role">모듈 역할</label>
+                  <div className="lab-assembly-inline">
+                    <select
+                      id="lab-module-role"
+                      value={roleKind}
+                      disabled={!editable || selected.kind === 'table'}
+                      onChange={e => setRoleKind(e.target.value as Kind)}
+                    >
+                      {roles.map(role => (
+                        <option
+                          key={role.value}
+                          value={role.value}
+                          disabled={
+                            (role.value === 'table' &&
+                              selected.kind !== 'table') ||
+                            (['table', 'figure'].includes(role.value) &&
+                              modules.some(m => m.parentId === selected.id)) ||
+                            (['abstract', 'highlights'].includes(role.value) &&
+                              selected.parentId !== null)
+                          }
+                        >
+                          {role.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      disabled={!editable || roleKind === selected.kind}
+                    >
+                      역할 적용
+                    </button>
+                  </div>
+                </form>
+                {['section', 'table', 'figure'].includes(selected.kind) ? (
+                  <label className="lab-assembly-checkbox">
+                    <input
+                      type="checkbox"
+                      aria-label="모듈 번호 표시"
+                      checked={selected.numbered !== false}
+                      disabled={!editable}
+                      onChange={event =>
+                        mutate({
+                          type: 'numbering',
+                          id: selected.id,
+                          numbered: event.target.checked
+                        })
+                      }
+                    />
+                    {selected.kind === 'section'
+                      ? '제목 번호 표시'
+                      : '캡션 번호 표시'}
+                  </label>
+                ) : (
+                  <p className="lab-assembly-help">
+                    이 역할의 제목은 번호 없이 표시됩니다.
+                  </p>
+                )}
+                {selected.kind === 'section' &&
+                  selected.number === null &&
+                  selected.numbered !== false &&
+                  !effectivelyHidden(selected) && (
+                    <p className="lab-assembly-help">
+                      상위 섹션의 설정에 따라 현재 번호가 표시되지 않습니다.
+                    </p>
+                  )}
+                {selected.kind === 'table' && (
+                  <p className="lab-assembly-help">
+                    표의 편집 데이터를 보존하기 위해 표 역할 전환은 지원하지
+                    않습니다.
+                  </p>
+                )}
+                {selected.kind === 'figure' && (
+                  <form
+                    className="lab-figure-settings"
+                    onSubmit={event => {
+                      event.preventDefault()
+                      mutate({
+                        type: 'figure',
+                        id: selected.id,
+                        figure: { path: figurePath, width: figureWidth }
+                      })
+                    }}
+                  >
+                    <label htmlFor="lab-figure-path">그림 파일</label>
+                    <select
+                      id="lab-figure-path"
+                      value={figurePath}
+                      disabled={!editable}
+                      onChange={e => setFigurePath(e.target.value)}
+                    >
+                      <option value="">그림 선택</option>
+                      {(assembly.imageFiles || []).map(path => (
+                        <option value={path} key={path}>
+                          {path}
+                        </option>
+                      ))}
+                    </select>
+                    <label htmlFor="lab-figure-width">
+                      본문 너비 대비 그림 크기 (%)
+                    </label>
+                    <input
+                      id="lab-figure-width"
+                      type="number"
+                      min={10}
+                      max={100}
+                      value={figureWidth}
+                      disabled={!editable}
+                      onChange={e => setFigureWidth(Number(e.target.value))}
+                    />
+                    <p className="lab-assembly-help">
+                      PNG·JPG를 본문 편집기에 업로드한 뒤 새로고침하세요. 모듈
+                      제목이 그림 캡션으로 사용됩니다.
+                    </p>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      disabled={!editable}
+                    >
+                      그림 설정 저장
+                    </button>
+                  </form>
+                )}
                 {standalone && selected.kind !== 'table' && (
                   <a
                     className="btn btn-sm btn-primary"
@@ -616,7 +815,9 @@ export default function LabAssemblyWidget({
                     </button>
                   </div>
                 </form>
-                {['section', 'table'].includes(selected.kind) && (
+                {['section', 'unnumbered', 'table', 'figure'].includes(
+                  selected.kind
+                ) && (
                   <form
                     onSubmit={event => {
                       event.preventDefault()
@@ -640,8 +841,10 @@ export default function LabAssemblyWidget({
                         {parents
                           .filter(
                             module =>
-                              (selected.kind !== 'table' ||
-                                module.kind === 'section') &&
+                              (!['table', 'figure'].includes(selected.kind) ||
+                                ['section', 'unnumbered'].includes(
+                                  module.kind
+                                )) &&
                               module.id !== selected.id &&
                               !isDescendant(module.id, selected.id)
                           )
@@ -693,22 +896,31 @@ export default function LabAssemblyWidget({
                 }}
                 disabled={!editable}
               >
-                <option value="section">일반 섹션</option>
-                <option value="abstract">초록</option>
-                <option value="highlights">Highlights</option>
-                <option value="unnumbered">번호 없는 구성</option>
-                <option value="table">계수표 01</option>
+                {roles.map(role => (
+                  <option value={role.value} key={role.value}>
+                    {role.label}
+                  </option>
+                ))}
               </select>
               <label htmlFor="lab-new-parent">넣을 위치</label>
               <select
                 id="lab-new-parent"
                 value={newParent}
                 onChange={event => setNewParent(event.target.value)}
-                disabled={!editable || !['section', 'table'].includes(newKind)}
+                disabled={
+                  !editable ||
+                  !['section', 'unnumbered', 'table', 'figure'].includes(
+                    newKind
+                  )
+                }
               >
                 <option value={ROOT}>논문 최상위</option>
                 {parents
-                  .filter(m => newKind !== 'table' || m.kind === 'section')
+                  .filter(
+                    m =>
+                      !['table', 'figure'].includes(newKind) ||
+                      ['section', 'unnumbered'].includes(m.kind)
+                  )
                   .map(module => (
                     <option key={module.id} value={module.id}>
                       {moduleLabel(module)} 안

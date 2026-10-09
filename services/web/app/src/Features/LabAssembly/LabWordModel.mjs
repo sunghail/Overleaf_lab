@@ -6,6 +6,7 @@ import {
 import { escapeLatex } from './LabLatex.mjs'
 import { superscripts } from './LabCleanerTemplate.mjs'
 import { renderTable } from './LabTableModel.mjs'
+import { renderFigure } from './LabFigureModel.mjs'
 export function renderWordSource(manifest, target = 'manuscript') {
   validateManifest(manifest)
   const numbers = getModuleNumbers(manifest)
@@ -24,13 +25,19 @@ export function renderWordSource(manifest, target = 'manuscript') {
   ]
   const tables = []
   const visit = (m, depth = 1) => {
+    const caption = (numbers.get(m.id) ? numbers.get(m.id) + ' ' : '') + m.title
     if (m.kind === 'table') {
-      tables.push({ ...m.table, caption: `${numbers.get(m.id)} ${m.title}` })
+      tables.push({ ...m.table, caption })
       lines.push(
-        renderTable(m.table, `${numbers.get(m.id)} ${m.title}`, m.id, {
+        renderTable(m.table, caption, m.id, {
           word: true,
+          numbered: m.numbered !== false,
         }),
       )
+      return
+    }
+    if (m.kind === 'figure') {
+      lines.push(renderFigure(m, { word: true, caption }))
       return
     }
     if (target !== 'highlights' && depth <= 3)

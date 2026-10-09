@@ -265,7 +265,21 @@
     &.drop-target {
       border-top: 2px solid var(--green-40);
     }
+    &.drop-before { border-top: 3px solid var(--green-40); }
+    &.drop-after { border-bottom: 3px solid var(--green-40); }
+    &.drop-inside { border: 2px dashed var(--green-40); background: #e1f0e7; }
+    &.drop-invalid { border-color: var(--content-danger); }
   }
+  .lab-module-role {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+    font-size: 11px;
+    opacity: .8;
+    pointer-events: none;
+  }
+  .lab-figure-settings { margin: 12px 0; }
 
   .lab-assembly-selection,
   .lab-assembly-add {

@@ -31,6 +31,7 @@ const operation = z.discriminatedUnion('type', [
         'highlights',
         'unnumbered',
         'table',
+        'figure',
       ]),
       parentId: id.nullable(),
     })
@@ -38,6 +39,9 @@ const operation = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rename'), id, title }).strict(),
   z.object({ type: z.literal('visibility'), id, hidden: z.boolean() }).strict(),
   z.object({ type: z.literal('table'), id, table: z.unknown() }).strict(),
+  z.object({ type: z.literal('figure'), id, figure: z.unknown() }).strict(),
+  z.object({ type: z.literal('numbering'), id, numbered: z.boolean() }).strict(),
+  z.object({ type: z.literal('role'), id, kind: z.enum(['section', 'unnumbered', 'abstract', 'highlights', 'table', 'figure']) }).strict(),
   z
     .object({
       type: z.literal('metadata'),

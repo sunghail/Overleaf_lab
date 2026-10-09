@@ -31,3 +31,4 @@
 표 편집은 [템플릿 작업 기록](tasks/cleaner-template/README.md)에 있다.
 이는 2·4·6단계의 일부이며 공식 저널 클래스 전환·그림 편집·전체 제출 검증은 포함하지 않는다.
 독립된 전체 화면 요청에 따른 화면 분리는 [독립 조립 화면 기록](tasks/assembly-workspace/README.md)에 있다.
+역할·제목 및 캡션 번호·위/하위/뒤 드래그 배치는 [모듈 설정 기록](tasks/module-settings/README.md)에 있다.

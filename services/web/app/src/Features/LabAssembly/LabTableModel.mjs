@@ -133,7 +133,7 @@ export function validateTable(table) {
   }
   return table
 }
-export function renderTable(table, title, id, { word = false } = {}) {
+export function renderTable(table, title, id, { word = false, numbered = true } = {}) {
   validateTable(table)
   const total = table.columns.reduce((sum, c) => sum + c.width, 0)
   const format = (col, span = 1) => {
@@ -192,7 +192,7 @@ export function renderTable(table, title, id, { word = false } = {}) {
     )
   lines.push(
     `\\begin{longtable}{${spec}}`,
-    `\\caption{${escapeLatex(title)}}\\label{lab:${id}}\\\\`,
+    `\\caption${!word && !numbered ? '*' : ''}{${escapeLatex(title)}}${numbered ? `\\label{lab:${id}}` : ''}\\\\`,
     rule,
   )
   for (let r = 0; r < table.headerRows; r++) lines.push(row(r))
